@@ -29,6 +29,7 @@ try
     var connectionString = builder.Configuration.GetConnectionString("PostgreSQLConnection");
     builder.Services.AddDbContext<PlayerDb>(options =>options.UseNpgsql(connectionString));
     builder.Services.AddDbContext<GameDB>(options => options.UseNpgsql(connectionString));
+    builder.Services.AddDbContext<TeamDb>(options => options.UseNpgsql(connectionString));
     // Two-stage initialization (https://github.com/serilog/serilog-aspnetcore)
     builder.Host.UseSerilog((context, services, configuration) => configuration.ReadFrom
              .Configuration(context.Configuration)
@@ -63,6 +64,40 @@ try
         return Results.Created($"/player/{e.Id}", e);
 
     });
+    app.MapPost("/juego/equipo/", async (Equipo e, TeamDb db) =>
+    {
+        db.Equipos.Add(e);
+        await db.SaveChangesAsync();
+       
+        return Results.Created($"/player/equipo/{e.Id}", e);
+
+    });
+    app.MapPut("/juego/equipo/{id:int}", async (int id, Equipo e, TeamDb db) =>
+    {
+        if (e.Id != id)
+        {
+            return Results.BadRequest();
+        }
+        var jugar = await db.Equipos.FindAsync(id);
+
+        if (jugar is null) return Results.NotFound();
+        jugar.idjugador1 = e.idjugador1;
+        jugar.email1 = e.email1;
+        jugar.idjugador2 = e.idjugador2;
+        jugar.email2 = e.email2;
+        jugar.punteoequipo1 = e.punteoequipo1;
+        jugar.punteoequipo2 = e.punteoequipo2;
+        jugar.idjugador3 = e.idjugador3;
+        jugar.email3 = e.email3;
+        jugar.idjugador3 = e.idjugador3;
+        jugar.email3 = e.email3;
+        if (jugar.idjugador3 == null) return Results.NotFound();
+
+        await db.SaveChangesAsync();
+        return Results.Ok(jugar);
+
+    });
+
     app.MapGet("/player/{id:int}", async(int id, PlayerDb db)=>
     { 
         return await db.players.FindAsync(id)
@@ -116,6 +151,8 @@ try
         return Results.Ok(jugar);
 
     });
+
+
     app.Run();
 }
 catch (Exception ex)
