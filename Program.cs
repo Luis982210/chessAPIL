@@ -76,7 +76,7 @@ try
     {
         if (e.Id != id)
         {
-            return Results.BadRequest();
+            return Results.NotFound();
         }
         var jugar = await db.Equipos.FindAsync(id);
 
@@ -91,7 +91,33 @@ try
         jugar.email3 = e.email3;
         jugar.idjugador3 = e.idjugador3;
         jugar.email3 = e.email3;
-        if (jugar.idjugador3 == null) return Results.NotFound();
+        jugar.idjugador4= e.idjugador4;
+        jugar.email4 = e.email4;
+        if (e.idjugador1 != 0)
+        {
+            if (e.idjugador2 != 0)
+            {
+                if (e.idjugador3 != 0)
+                {
+                    if (e.idjugador4 != 0)
+                    { 
+                        if(e.idjugador1==e.idjugador2||e.idjugador1==e.idjugador3||e.idjugador1==e.idjugador4)
+                        {
+                            return Results.BadRequest();
+                        }
+                        if (e.idjugador2 == e.idjugador3 || e.idjugador2 == e.idjugador4 )
+                        {
+                            return Results.BadRequest();
+                        }
+                        if (e.idjugador3== e.idjugador4)
+                        {
+                            return Results.BadRequest();
+                        }
+
+                    }
+                }
+            }
+        }
 
         await db.SaveChangesAsync();
         return Results.Ok(jugar);
