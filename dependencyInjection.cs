@@ -1,6 +1,7 @@
 using Autofac;
 using Npgsql;
 using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 using System.Data;
 using chessAPI.dataAccess.providers.postgreSQL;
 using chessAPI.dataAccess.interfaces;
@@ -10,6 +11,8 @@ using chessAPI.dataAccess.queries;
 using chessAPI.dataAccess.repositores;
 using chessAPI.business.interfaces;
 using chessAPI.business.impl;
+using MongoDB.Bson;
+using chessAPI.dataAccess.models;
 
 namespace chessAPI;
 
@@ -20,9 +23,20 @@ where TI : struct, IEquatable<TI>
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+
+        //Relational datastore
         builder.Register(c => new NpgsqlConnection(c.Resolve<IOptions<connectionStrings>>().Value.relationalDBConn))
             .InstancePerLifetimeScope()
             .As<IDbConnection>();
+
+        //Non-relational datastore
+        builder.Register(c => new MongoClient(c.Resolve<IOptions<connectionStrings>>().Value.mongoDbConn))
+            .SingleInstance()
+            .As<IMongoClient>();
+
+        builder.Register(c => c.Resolve<IMongoClient>().GetDatabase("chess"))
+            .SingleInstance()
+            .As<IMongoDatabase>();
 
         #region "Low level DAL Infrastructure"
         builder.Register(c => new clsConcurrency<TC>())
@@ -35,18 +49,45 @@ where TI : struct, IEquatable<TI>
                 .As<IRelationalContext<TC>>();
         #endregion
 
+        #region "MongoDb Collections"
+        builder.Register(c => c.Resolve<IMongoClient>().GetDatabase("chess").GetCollection<clsGameEntityModel>("games"))
+            .InstancePerDependency()
+            .As<IMongoCollection<clsGameEntityModel>>();
+        #endregion
+
         #region "Queries"
         builder.Register(c => new qPlayer())
           .SingleInstance()
           .As<IQPlayer>();
+
+
+        builder.Register(c => new qGame())
+          .SingleInstance()
+          .As<IQGame>();
+
+        builder.Register(c => new qTeam())
+            .SingleInstance()
+            .As<IQTeam>();
         #endregion
 
-        #region "Repositories"
+        #region "Relational Repositories"
         builder.Register(c => new clsPlayerRepository<TI, TC>(c.Resolve<IRelationalContext<TC>>(),
                                                               c.Resolve<IQPlayer>(),
                                                               c.Resolve<ILogger<clsPlayerRepository<TI, TC>>>()))
                .InstancePerDependency()
                .As<IPlayerRepository<TI, TC>>();
+
+        builder.Register(c => new clsTeamRepository<TI, TC>(c.Resolve<IRelationalContext<TC>>(),
+                                                     c.Resolve<IQTeam>(),
+                                                     c.Resolve<ILogger<clsTeamRepository<TI, TC>>>()))
+               .InstancePerDependency()
+               .As<ITeamRepository<TI, TC>>();
+        #endregion
+
+        #region "Non-Relational Repositories"
+        builder.Register(c => new clsGameRepository(c.Resolve<IMongoCollection<clsGameEntityModel>>()))
+            .InstancePerDependency()
+            .As<IGameRepository>();
         #endregion
 
         #region "Kaizen Entity Factories"
@@ -55,12 +96,26 @@ where TI : struct, IEquatable<TI>
             IComponentContext cc = context.Resolve<IComponentContext>();
             return cc.Resolve<IPlayerRepository<TI, TC>>;
         });
+
+        builder.Register<Func<ITeamRepository<TI, TC>>>(delegate (IComponentContext context)
+        {
+            IComponentContext cc = context.Resolve<IComponentContext>();
+            return cc.Resolve<ITeamRepository<TI, TC>>;
+        });
         #endregion
 
         #region "Business classes"
         builder.Register(c => new clsPlayerBusiness<TI, TC>(c.Resolve<IPlayerRepository<TI, TC>>()))
                .InstancePerDependency()
                .As<IPlayerBusiness<TI>>();
+
+        builder.Register(c => new clsTeamBusiness<TI, TC>(c.Resolve<ITeamRepository<TI, TC>>()))
+               .InstancePerDependency()
+               .As<ITeamBusiness<TI>>();
+
+        builder.Register(c => new clsGameBusiness(c.Resolve<IGameRepository>()))
+                .InstancePerDependency()
+                .As<IGameBusiness>();
         #endregion
     }
 }

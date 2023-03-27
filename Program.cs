@@ -2,13 +2,15 @@ using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using chessAPI;
 using chessAPI.business.interfaces;
-using chessAPI.models;
+using chessAPI.models.game;
 using chessAPI.models.player;
+using chessAPI.models.team;
+using Dapr;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Mvc;
 using Serilog;
 using Serilog.Events;
+
 
 //Serilog logger (https://github.com/serilog/serilog-aspnetcore)
 Log.Logger = new LoggerConfiguration()
@@ -25,11 +27,8 @@ try
     var connectionStrings = new connectionStrings();
     builder.Services.AddOptions();
     builder.Services.Configure<connectionStrings>(builder.Configuration.GetSection("ConnectionStrings"));
-    //builder.Configuration.GetSection("ConnectionStrings").Bind(connectionStrings);
-    var connectionString = builder.Configuration.GetConnectionString("PostgreSQLConnection");
-    builder.Services.AddDbContext<PlayerDb>(options =>options.UseNpgsql(connectionString));
-    builder.Services.AddDbContext<GameDB>(options => options.UseNpgsql(connectionString));
-    builder.Services.AddDbContext<TeamDb>(options => options.UseNpgsql(connectionString));
+    builder.Configuration.GetSection("ConnectionStrings").Bind(connectionStrings);
+
     // Two-stage initialization (https://github.com/serilog/serilog-aspnetcore)
     builder.Host.UseSerilog((context, services, configuration) => configuration.ReadFrom
              .Configuration(context.Configuration)
@@ -43,140 +42,58 @@ try
     builder.Host.ConfigureContainer<ContainerBuilder>(builder => builder.RegisterModule(new chessAPI.dependencyInjection<int, int>()));
     var app = builder.Build();
     app.UseSerilogRequestLogging();
-    //app.UseMiddleware(typeof(chessAPI.customMiddleware<int>));
+    app.UseMiddleware(typeof(chessAPI.customMiddleware<int>));
     app.MapGet("/", () =>
     {
-        return "hola mundo";
+        return "Chess API";
     });
 
-    app.MapPost("/player/", async (Jugador e,PlayerDb db)  =>
+    //INSERTAR UN JUGADOR
+    app.MapPost("player", 
+    [AllowAnonymous] async(IPlayerBusiness<int> bs, clsNewPlayer newPlayer) => Results.Ok(await bs.addPlayer(newPlayer)));
+
+    //OBTENER UN JUGADOR
+    app.MapGet("player/{idPlayer}",
+    [AllowAnonymous] async (IPlayerBusiness<int> bs, int idPlayer) => Results.Ok(await bs.getPlayer(idPlayer)));
+
+    //MODIFICAR UN JUGADOR
+    app.MapPut("player/{idPlayer}",
+    [AllowAnonymous] async (IPlayerBusiness<int> bs, int idPlayer, clsPlayer<int> updatePlayer) => Results.Ok(await bs.updatePlayer(updatePlayer)));
+
+    //INSERTAR UN EQUIPO
+    app.MapPost("team",
+    [AllowAnonymous] async (ITeamBusiness<int> bs, clsNewTeam newTeam) => Results.Ok(await bs.addTeam(newTeam)));
+
+    //OBTENER UN EQUIPO
+    app.MapGet("team/{idTeam}",
+    [AllowAnonymous] async (ITeamBusiness<int> bs, int idTeam) => Results.Ok(await bs.getTeam(idTeam)));
+
+    //MODIFICAR UN EQUIPO
+    app.MapPut("team/{idTeam}",
+    [AllowAnonymous] async (ITeamBusiness<int> bs, int idTeam, clsTeam<int> updateTeam) => Results.Ok(await bs.updateTeam(updateTeam)));
+
+
+    //OBTENER UN JUEGO POR ID
+    app.MapGet("game/{idGame}",
+    [AllowAnonymous] async (IGameBusiness bs, long idGame) => Results.Ok(await bs.getGame(idGame)));
+
+    //INICIAR UN JUEGO
+    app.MapPost("game",
+    [AllowAnonymous] async (IGameBusiness bs, clsNewGame newGame) =>
     {
-        db.players.Add(e);
-        await db.SaveChangesAsync();
-        return Results.Created($"/player/{e.id}", e);
+        await bs.startGame(newGame).ConfigureAwait(false);
+        return Results.Ok();
+    });
+
+    //UNIRSE A UN JUEGO
+    app.MapPut("/game/{id}/swapturn",
+    [AllowAnonymous] async (IGameBusiness bs, long id) =>
+    {
+        var didSwap = await bs.swapTurn(id).ConfigureAwait(false);
+        return didSwap ? Results.Ok() : Results.BadRequest();
+    });
+
     
-    });
-
-    app.MapPost("/juego/", async (Juego e, GameDB db) =>
-    {
-        db.partido.Add(e);
-        await db.SaveChangesAsync();
-        return Results.Created($"/player/{e.Id}", e);
-
-    });
-    app.MapPost("/juego/equipo/", async (Equipo e, TeamDb db) =>
-    {
-        db.Equipos.Add(e);
-        await db.SaveChangesAsync();
-       
-        return Results.Created($"/player/equipo/{e.Id}", e);
-
-    });
-    app.MapPut("/juego/equipo/{id:int}", async (int id, Equipo e, TeamDb db) =>
-    {
-        if (e.Id != id)
-        {
-            return Results.NotFound();
-        }
-        var jugar = await db.Equipos.FindAsync(id);
-
-        if (jugar is null) return Results.NotFound();
-        jugar.idjugador1 = e.idjugador1;
-        jugar.email1 = e.email1;
-        jugar.idjugador2 = e.idjugador2;
-        jugar.email2 = e.email2;
-        jugar.punteoequipo1 = e.punteoequipo1;
-        jugar.punteoequipo2 = e.punteoequipo2;
-        jugar.idjugador3 = e.idjugador3;
-        jugar.email3 = e.email3;
-        jugar.idjugador3 = e.idjugador3;
-        jugar.email3 = e.email3;
-        jugar.idjugador4= e.idjugador4;
-        jugar.email4 = e.email4;
-        if (e.idjugador1 != 0)
-        {
-            if (e.idjugador2 != 0)
-            {
-                if (e.idjugador3 != 0)
-                {
-                    if (e.idjugador4 != 0)
-                    { 
-                        if(e.idjugador1==e.idjugador2||e.idjugador1==e.idjugador3||e.idjugador1==e.idjugador4)
-                        {
-                            return Results.BadRequest();
-                        }
-                        if (e.idjugador2 == e.idjugador3 || e.idjugador2 == e.idjugador4 )
-                        {
-                            return Results.BadRequest();
-                        }
-                        if (e.idjugador3== e.idjugador4)
-                        {
-                            return Results.BadRequest();
-                        }
-
-                    }
-                }
-            }
-        }
-
-        await db.SaveChangesAsync();
-        return Results.Ok(jugar);
-
-    });
-
-    app.MapGet("/player/{id:int}", async(int id, PlayerDb db)=>
-    { 
-        return await db.players.FindAsync(id)
-            is Jugador e
-            ? Results.Ok(e)
-            :Results.NotFound();
-    });
-    app.MapGet("/juego/{id:int}", async (int id, GameDB db) =>
-    {
-        return await db.partido.FindAsync(id)
-            is Juego e
-            ? Results.Ok(e)
-            : Results.NotFound();
-    });
-    app.MapGet("/player", async (PlayerDb db) => await db.players.ToListAsync());
-    app.MapGet("/juego", async (GameDB db) => await db.partido.ToListAsync());
-
-    app.MapPut("/player/{id:int}", async (int id, Jugador e, PlayerDb db) =>
-    {
-        if (e.id != id)
-        { 
-        return Results.BadRequest();
-        }
-        var jugar=await db.players.FindAsync(id);
-
-        if(jugar is null) return Results.NotFound();
-        jugar.email= e.email;
-
-        await db.SaveChangesAsync();
-        return Results.Ok(jugar);
-
-    });
-    app.MapPut("/juego/{id:int}", async (int id, Juego e, GameDB db) =>
-    {
-        if (e.Id != id)
-        {
-            return Results.BadRequest();
-        }
-        var jugar = await db.partido.FindAsync(id);
-
-        if (jugar is null) return Results.NotFound();
-        jugar.idhome = e.idhome;
-        jugar.emailhome = e.emailhome;
-        jugar.punteohome = e.punteohome;
-        jugar.punteoaway = e.punteoaway;
-        jugar.idaway = e.idaway;
-        jugar.emailaway = e.emailaway;
-
-
-        await db.SaveChangesAsync();
-        return Results.Ok(jugar);
-
-    });
 
 
     app.Run();
