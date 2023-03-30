@@ -20,6 +20,7 @@ app.use(bodyParser.json({ type: 'application/*+json' }));
 
 var uno="";
 var dos="";
+var ingeniero="";
 const port = 3000;
 
 app.get('/dapr/subscribe', (_req, res) => {
@@ -46,24 +47,48 @@ app.post('/A', (req, res) => {
     console.log("A: ", req.body.data.message);
     
 console.log(req.body.data.message);
-
 uno=req.body.data.message;
-    res.sendStatus(200);
+if(uno.includes("ingeniero"))
+{
+    ingeniero=1;
+}
+compressed=""
+decompressed=""
+console.log("Seleccione el topico b para seguir el flujo del programa sin ingresar nada en el cuadro de texto");
+res.sendStatus(200);
 });
 
 app.post('/B', (req,res ) => {
     console.log("B: ", req.body.data.message);
     res.sendStatus(200);
-    
+    if(ingeniero!=1)
+    {
+        console.log("Compresion realizada ")
     var compressed = lzbase62.compress(uno);
-    console.log(compressed);
+    console.log("Compresion= "+compressed);
     dos=compressed; // 'hello hello hello'
+    }
+    else
+    {
+        console.log("no se puede comprimir el texto incluye un tocken no valido")
+        console.log("Se rechazo la solicitud por escribir un token prohibido")
+        console.log("ingrese otro texto para comprimir y descomprimir")
+        ingeniero=0;
+    }
 });
 app.post('/C', (req, res) => {
+
+    if(dos==null)
+    {
+        console.log("ingrese otro texto para comprimir y descomprimir")
+    
+    }
+    else
     console.log("C: ", dos);
     res.sendStatus(200);
     var decompressed = lzbase62.decompress(dos);
-    console.log(decompressed); // 'hello hello hello'
+    console.log("Descompresion= "+decompressed); // 'hello hello hello'
+
  // true
 });
 
